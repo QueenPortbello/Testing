@@ -1,0 +1,27 @@
+DECLARE @temptable TABLE (
+Number_of_SKU VARCHAR (100),
+Number_of_Unit VARCHAR (100),
+Orderid VARCHAR (100),
+Ordernumber VARCHAR(100),
+Time_Period VARCHAR(100),
+Warehouse VARCHAR(100))
+
+Insert INTO @temptable (Number_of_SKU, Number_of_Unit, Orderid, Ordernumber, Time_Period,Warehouse)
+Select COUNT (so.LineItemId),
+SUM(so.Lineitem_quantity),
+so.orderid,
+so.OrderNumber,
+so.PERIOD,
+f.warehouse
+From ShopifyOrders so
+INNER JOIN fpa3pl f ON so.OrderNumber =f.ordernumber
+Where so.Period >= '202308' and so.Store= 'MAN-US' and so.Cancelled_at is NULL 
+GROUP BY so.Orderid, so.OrderNumber,so.PERIOD,f.warehouse
+
+Select DISTINCT t.Time_Period,
+(t.Number_of_UNIT) AS "ORDER_WITH_NUMBER_OF_UNIT",
+COUNT (t.Number_of_Unit) AS "COUNT",
+t.Warehouse
+From @temptable t
+GROUP BY t.Number_of_Unit,t.Time_Period,t.Warehouse
+ORDER BY COUNT(t.Number_of_Unit) DESC
