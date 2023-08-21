@@ -1,0 +1,29 @@
+DECLARE @TempTable TABLE (
+    Store VARCHAR(100),
+    SalesOrderNumber varchar(100),
+    Delivery_Date datetime2,
+    Fulfilled_Date datetime2,
+    Warehouse VARCHAR(100)
+)
+
+INSERT INTO @TempTable (Store, SalesOrderNumber, Delivery_Date,Fulfilled_Date, Warehouse)
+SELECT s.Store,
+       s.SalesOrderNumber,
+       sf.StatusDate,
+       sf2.StatusDate,
+       CASE WHEN f.warehouse  = 'MANSCAPED-DTC' THEN 'FSD-Baja'
+       WHEN f.warehouse = 'Texas' Then 'FSD-Reynosa'
+       Else f.warehouse END As 'Warehouse'
+FROM SourceSystemDim ss
+INNER JOIN SalesOrderStatusDim sos2 ON  sos2.Status = 'Fulfilled'
+INNER JOIN SalesOrderStatusFact sf2 ON  ss.SourceSystemId = sf2.SourceSystemId AND sos2.SalesOrderStatusId = sf2.SalesOrderStatusId
+LEFT JOIN SalesOrderStatusDim sos ON sos.Status = 'Delivered'
+LEFT JOIN SalesOrderStatusFact sf ON sos.SalesOrderStatusId = sf.SalesOrderStatusId AND sf.SourceSystemId = sf2.SourceSystemId and sf.SalesOrderId = sf2.SalesOrderId
+INNER JOIN SalesOrderDim s ON sf2.SalesOrderId = s.SalesOrderId
+INNER JOIN fpa3pl f ON s.salesordernumber =f.ordernumber
+WHERE ss.SourceSystemName = 'Visible' and sf2.statusdate >='2023-7-01'
+
+SELECT t.warehouse,t.SalesOrderNumber, t.Delivery_Date, t.Fulfilled_Date, soh.Created_at As 'Ordered_Date', DateDiff (day,Fulfilled_Date,Delivery_Date) AS 'Days In Transit', DateDiff(day,soh.Created_at, Fulfilled_Date) AS 'Days To Fulfill',
+soh.Shipping_Province
+from @TempTable t
+INNER JOIN ShopifyOrdersHeader soh  ON t.Store = soh.Store AND t.SalesOrderNumber = soh.OrderNumber
