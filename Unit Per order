@@ -1,27 +1,36 @@
 DECLARE @temptable TABLE (
-Number_of_SKU VARCHAR (100),
-Number_of_Unit VARCHAR (100),
+Number_of_SKU INTEGER,
+Number_of_Unit INTEGER,
 Orderid VARCHAR (100),
 Ordernumber VARCHAR(100),
 Time_Period VARCHAR(100),
-Warehouse VARCHAR(100))
+Region VARCHAR (100)
+)
 
-Insert INTO @temptable (Number_of_SKU, Number_of_Unit, Orderid, Ordernumber, Time_Period,Warehouse)
+Insert INTO @temptable (Number_of_SKU, Number_of_Unit, Orderid, Ordernumber, Time_Period, Region)
 Select COUNT (so.LineItemId),
 SUM(so.Lineitem_quantity),
 so.orderid,
 so.OrderNumber,
 so.PERIOD,
-f.warehouse
+CASE WHEN so.store ='MAN-US' THEN 'US'
+    WHEN so.store ='MAN-AU' THEN 'AU' 
+    WHEN so.store = 'MAN-CA' THEN 'CA' 
+    WHEN so.store ='MAN-EU' THEN 'EU' 
+    WHEN so.store = 'MAN-UK' THEN 'UK'
+    WHEN so.store ='MAN-MENA' THEN 'MENA' 
+    WHEN so.store = 'MAN-SG' THEn 'SG'
+    ELSE so.Store END
 From ShopifyOrders so
-INNER JOIN fpa3pl f ON so.OrderNumber =f.ordernumber
-Where so.Period >= '202308' and so.Store= 'MAN-US' and so.Cancelled_at is NULL 
-GROUP BY so.Orderid, so.OrderNumber,so.PERIOD,f.warehouse
+Where so.Period >= '202306' and so.Period < '202308' and so.Cancelled_at is NULL AND so.store IN ('MAN-US', 'MAN-AU', 'MAN-CA','MAN-EU','MAN-UK','MAN-MENA','MAN-SG'  )
+GROUP BY so.Orderid, so.OrderNumber,so.PERIOD, so.Store
+
 
 Select DISTINCT t.Time_Period,
 (t.Number_of_UNIT) AS "ORDER_WITH_NUMBER_OF_UNIT",
 COUNT (t.Number_of_Unit) AS "COUNT",
-t.Warehouse
+t.region
 From @temptable t
-GROUP BY t.Number_of_Unit,t.Time_Period,t.Warehouse
-ORDER BY COUNT(t.Number_of_Unit) DESC
+Where t.Time_Period >= '202306' and t.time_Period < '202308' 
+GROUP BY t.Number_of_Unit,t.Time_Period, t.Region
+ORDER BY COUNT(t.Number_of_Unit) DESC, t.Region ASC
