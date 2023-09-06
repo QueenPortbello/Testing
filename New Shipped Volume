@@ -1,0 +1,132 @@
+CREATE TABLE #tempfpa3pl (
+    Ordernumber varchar(100),
+    source3pl varchar(100),
+    carrier varchar(100),
+    Service varchar(100),
+    Zone int,
+    warehouse varchar(100),
+   warehouseDesc as CASE source3pl WHEN 'Visible' THEN CASE WHEN warehouse = 'ATL' OR warehouse IS NULL THEN 'Atlanta' WHEN warehouse = 'WJ' THEN 'West Jordan' WHEN warehouse = 'TOR' OR warehouse IS NULL THEN 'Toronto' END WHEN 'Shiphero' THEN CASE WHEN warehouse = 'Texas' THEN 'Reynosa' ELSE 'Tecate' END WHEN 'Capacity' THEN 'Capacity' END,
+    [3PL] AS CASE WHEN source3pl = 'Shiphero' AND warehouse = 'Texas' THEN 'FSD - Reynosa' WHEN source3pl = 'Shiphero' THEN 'FSD - Tecate' WHEN source3pl = 'Visible' AND warehouse = 'WJ' THEN 'Maersk - West Jordan' WHEN source3pl = 'Visible' AND warehouse = 'ATL' THEN 'Maersk - Atlanta'  WHEN source3pl = 'Visible' AND warehouse = 'TOR' THEN 'Maersk - Toronto' ELSE 'FSD - Tecate' END,
+    weight numeric(18,6)
+    INDEX cidx_TempFpa3PL_Clustered CLUSTERED (OrderNumber)
+)
+
+INSERT INTO #tempfpa3pl(Ordernumber, source3pl, carrier, service, zone, warehouse, weight)
+SELECT f.Ordernumber, f.source3pl, f.carrier, f.shipmethod Service, f.Zone, f.warehouse, SUM(COALESCE(i.Weight, 0.5)) Weight
+FROM fpa3pl f
+LEFT JOIN ItemDim i ON f.sku = i.SKU AND i.SourceSystem = 'NetSuite'
+GROUP BY  f.Ordernumber, f.source3pl, f.carrier, f.shipmethod, f.Zone, f.warehouse
+
+CREATE TABLE #tempPHPOrders (
+    Store varchar(100),
+    OrderNumber varchar(100),
+    IsCorePHP int,
+    Qty int
+    INDEX cidx_TempPHPOrders_Clustered UNIQUE CLUSTERED (Store, OrderNumber, IsCorePHP)
+)
+
+INSERT INTO #tempPHPOrders(Store, OrderNumber, IsCorePHP, Qty)
+SELECT so.Store, so.OrderNumber, MIN(CASE WHEN i.IsCorePHP = 1 AND so.Created_AT>=i.CorePHPStartDate AND so.Created_AT<i.CorePHPEndDate THEN 1 ELSE 0 END) IsCorePHP, SUM(so.Lineitem_quantity) Qty
+FROM ShopifyOrders so with (nolock)
+INNER JOIN ItemDim i with (nolock) ON so.Lineitem_SKU = i.SKU AND i.SourceSystem = 'NetSuite'
+WHERE so.Store = 'MAN-US'
+AND so.Period >= 202308
+GROUP BY so.Store, so.OrderNumber
+HAVING MIN(CASE WHEN i.IsCorePHP = 1 THEN 1 ELSE 0 END) = 1 AND SUM(so.Lineitem_quantity) = 1
+
+CREATE TABLE #ReducedOrders (
+    Store varchar(100),
+    OrderNumber varchar(100),
+    Period int,
+    Month varchar(15),
+    State varchar(100),
+    Created_at datetime2, 
+    IsFirstBuyer bit,
+    WebSubOther varchar(100)
+)
+
+INSERT INTO #ReducedOrders(Store, OrderNumber, Period, Month, State, Created_at, IsFirstBuyer, WebSubOther)
+SELECT  soh.Store, 
+        soh.OrderNumber, 
+        soh.Period, 
+        DATENAME(MONTH, soh.Created_at), 
+        soh.Shipping_Province, 
+        soh.Created_at,
+        soh.IsFirstOrder,
+        soh.WebSubOther
+FROM ShopifyOrdersHeader soh with (nolock)
+WHERE soh.Store = 'MAN-US'
+AND soh.Period >= 202308
+
+CREATE TABLE #tempOrders(
+    [3PL] varchar(100),
+    Store varchar(100),
+    OrderNumber varchar(100),
+    Period int,
+    Month varchar(15),
+    State varchar(100),
+    [Order Category] varchar(100),
+    IsPHP bit,
+    warehouse varchar(100),
+    warehouseDesc varchar(100),
+    source3pl varchar(100), 
+    Zone int, 
+    Created_at datetime2, 
+    Weight numeric(18,6),
+    IsFirstBuyer bit,
+    carrier varchar(100),
+    Service varchar(100),
+    INDEX cid_tempOrders_Clustered CLUSTERED ([3PL], Period, Month, State, warehouseDesc, [Order Category], IsFirstBuyer)
+)
+
+INSERT INTO #tempOrders([3PL],Store, OrderNumber, Period, Month, State, [Order Category], IsPHP, Warehouse, WarehouseDesc, source3pl, Zone, Created_at, Weight, IsFirstBuyer, carrier, service)
+SELECT  f.[3PL],
+        soh.Store, 
+        soh.OrderNumber, 
+        soh.Period, 
+        soh.Month, 
+        soh.State, 
+        CASE WHEN soh.WebSubOther = 'Web' THEN 'Web' WHEN so.IsCorePHP = 1 AND so.Qty = 1 then 'PHP' ELSE soh.WebSubOther END,
+        CASE WHEN so.IsCorePHP = 1 AND so.Qty = 1 THEN 1 ELSE 0 END,
+        f.Warehouse,
+        f.WarehouseDesc,
+        f.source3pl,
+        f.zone,
+        soh.Created_at,
+        f.Weight,
+        soh.IsFirstBuyer,
+        f.Carrier,
+        CASE
+            WHEN f.source3pl IN ('Visible', 'Capacity') AND so.IsCorePHP = 1 AND soh.Created_at >= '2023-08-01' THEN 'Deferred'
+            ELSE COALESCE(osm1.RateCardService, osm2.RateCardService, 'Cheapest') 
+        END
+FROM #ReducedOrders soh with (nolock)
+INNER JOIN #tempfpa3pl f ON soh.OrderNumber = f.OrderNumber
+LEFT JOIN #tempPHPOrders so ON soh.Store = so.Store AND soh.OrderNumber = so.OrderNumber AND so.IsCorePHP = 1 AND so.Qty = 1
+LEFT JOIN Order3PLRateCardServiceMapping osm1 ON f.source3pl = osm1.Source3PL AND f.Service = osm1.OrderService
+LEFT JOIN Order3PLRateCardServiceMapping osm2 ON f.source3pl = osm2.Source3PL AND f.carrier = osm2.OrderService AND osm2.Source3PL = 'Visible'
+
+SELECT  soh.[3PL], 
+        soh.Period,
+        soh.Month,
+        soh.State,
+        COUNT(1) Orders,
+        soh.warehouseDesc Warehouse,
+         soh.[Order Category],
+        SUM(
+            CASE
+                soh.Service
+                WHEN 'Cheapest' THEN dbo.ShippingRateCheapest(soh.source3pl, soh.Zone, soh.Created_at, soh.Weight)
+                WHEN 'Deferred' THEN dbo.ShippingRate2(soh.source3pl, soh.Zone, soh.Created_at, soh.Weight, 'Deferred')
+                ELSE dbo.ShippingRate2(soh.source3pl, soh.Zone, soh.Created_at, soh.Weight, soh.Service)
+            END
+            ) "Total Shipping Cost",
+        soh.IsFirstBuyer FirstBuyer
+FROM #tempOrders soh
+GROUP BY soh.[3PL], 
+        soh.Period,
+        soh.Month,
+        soh.State,
+        soh.warehouseDesc,
+        soh.[Order Category],
+        soh.IsFirstBuyer
