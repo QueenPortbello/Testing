@@ -5,8 +5,8 @@ CREATE TABLE #tempfpa3pl (
     Service varchar(100),
     Zone int,
     warehouse varchar(100),
-   warehouseDesc as CASE source3pl WHEN 'Visible' THEN CASE WHEN warehouse = 'ATL' OR warehouse IS NULL THEN 'Atlanta' WHEN warehouse = 'WJ' THEN 'West Jordan' WHEN warehouse = 'TOR' OR warehouse IS NULL THEN 'Toronto' END WHEN 'Shiphero' THEN CASE WHEN warehouse = 'Texas' THEN 'Reynosa' ELSE 'Tecate' END WHEN 'Capacity' THEN 'Capacity' END,
-    [3PL] AS CASE WHEN source3pl = 'Shiphero' AND warehouse = 'Texas' THEN 'FSD - Reynosa' WHEN source3pl = 'Shiphero' THEN 'FSD - Tecate' WHEN source3pl = 'Visible' AND warehouse = 'WJ' THEN 'Maersk - West Jordan' WHEN source3pl = 'Visible' AND warehouse = 'ATL' THEN 'Maersk - Atlanta'  WHEN source3pl = 'Visible' AND warehouse = 'TOR' THEN 'Maersk - Toronto' ELSE 'FSD - Tecate' END,
+    warehouseDesc as CASE WHEN warehouse ='ATL' THEN 'Atlanta' WHEN  warehouse = 'TOR' THEN 'Toronto' WHEN  warehouse = 'Texas' THEN 'Reynosa' WHEN warehouse = 'Manscaped-DTC' THEN 'Tecate' WHEN warehouse ='Capacity' THEN 'Capacity' END,
+    [3PL] AS CASE WHEN warehouse ='ATL' THEN 'Maersk - Atlanta' WHEN  warehouse = 'TOR' THEN 'Maersk - Toronto' WHEN  warehouse = 'Texas' THEN 'FSD - Reynosa' WHEN warehouse='Manscaped-DTC' THEN 'FSD - Tecate' WHEN warehouse ='Capacity' THEN 'Capacity'  END,
     weight numeric(18,6)
     INDEX cidx_TempFpa3PL_Clustered CLUSTERED (OrderNumber)
 )
