@@ -13,6 +13,10 @@ SELECT s.Store,
        sf2.StatusDate,
        CASE WHEN f.warehouse  = 'MANSCAPED-DTC' THEN 'FSD-Baja'
        WHEN f.warehouse = 'Texas' Then 'FSD-Reynosa'
+	   WHEN f.warehouse ='Fulfillment Center TX / Texas' THEN 'FSD-Reynosa'
+	   WHEN f.warehouse = 'Manscaped-DTC / Manscaped-DTC' THEN 'FSD-Baja'
+	   WHEN f.warehouse ='Fulfillment Center TX/Texas' THEN 'FSD-Reynosa'
+	   WHEN f.warehouse = 'Manscaped-DTC/Manscaped-DTC' THEN 'FSD-Baja'
        Else f.warehouse END As 'Warehouse'
 FROM SourceSystemDim ss
 INNER JOIN SalesOrderStatusDim sos2 ON  sos2.Status = 'Fulfilled'
