@@ -1,0 +1,34 @@
+select 
+s.source3pl,
+s.transactionnumber,
+s.period,
+s.shipmentdate As 'Ship_Complete_Date',
+s.sku,
+i.itemname,
+s.quantityordered,
+s.quantityshipped,
+s.address,
+s.city,
+s.zipcode,
+s.state,
+s.country,
+CASE 
+WHEN s.source3pl ='SEKO'  AND s.TransactionNumber LIKE '%NL%' THEN 'SEKO-NL'
+WHEN s.source3pl ='SEKO'  AND s.TransactionNumber LIKE '%TFI%' THEN 'TFI'
+ELSE s.company END As 'Ship_To_3PL',
+CASE 
+WHEN s.Warehouse like '%ATL%'           THEN 'Maersk-ATL'
+WHEN s.Warehouse like '%TOR%'           THEN 'Maersk-TOR'
+WHEN s.Warehouse like '%WJ%'            THEN 'Maersk-West_Jordan'
+WHEN s.Warehouse like '%MANCAP%'        THEN 'NPF'
+WHEN s.Warehouse like '%MANCWS%'        THEN 'NPF'
+WHEN s.Warehouse like '%MCEDI%'         THEN 'NPF'
+WHEN s.Warehouse like '%DCCL01%'        THEN 'SEKO-UK'
+WHEN s.Warehouse like '%DCRTDM02%'      THEN 'SEKO-NL'
+ELSE s.Warehouse END as 'Ship_FROM_3PL',
+s.location As'Detail',
+
+s.inserteddateutc As '3PL_WMS_Entered_Date'
+From ShipmentTransactions3PL s
+INNER JOIN itemdim i ON s.sku =i.sku AND i.SourceSystem ='NetSuite'
+where s.period >= 202301 and s.TransactionNumber LIKE 'MAN%'
