@@ -28,7 +28,7 @@ INNER JOIN SalesOrderStatusFact sf2 ON  ss.SourceSystemId = sf2.SourceSystemId A
 LEFT JOIN SalesOrderStatusDim sos ON sos.Status = 'Delivered'
 LEFT JOIN SalesOrderStatusFact sf ON sos.SalesOrderStatusId = sf.SalesOrderStatusId AND sf.SourceSystemId = sf2.SourceSystemId and sf.SalesOrderId = sf2.SalesOrderId
 LEFT JOIN SalesOrderStatusDim sos3 ON sos3.Status = 'Open'
-LEFT JOIN SalesOrderStatusFact sf3 ON sos3.SalesOrderStatusId = sf3.SalesOrderStatusId AND sf.SourceSystemId = sf3.SourceSystemId and sf.SalesOrderId = sf3.SalesOrderId
+LEFT JOIN SalesOrderStatusFact sf3 ON sos3.SalesOrderStatusId = sf3.SalesOrderStatusId AND sf2.SourceSystemId = sf3.SourceSystemId and sf2.SalesOrderId = sf3.SalesOrderId
 INNER JOIN SalesOrderDim s ON sf2.SalesOrderId = s.SalesOrderId
 INNER JOIN fpa3pl f ON s.salesordernumber =f.ordernumber
 WHERE sf2.statusdate >='2024-05-01' AND ss.SourceSystemName IN ('Visible','Shiphero')
