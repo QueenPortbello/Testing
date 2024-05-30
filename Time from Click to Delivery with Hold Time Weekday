@@ -1,0 +1,95 @@
+DECLARE @TempTable TABLE (
+    Store VARCHAR(100),
+    SalesOrderNumber varchar(100),
+    Delivery_Date datetime2,
+    Fulfilled_Date datetime2,
+    WMS_Inserted_Date DATETIME2,
+    Warehouse VARCHAR(100)
+)
+
+INSERT INTO @TempTable (Store, SalesOrderNumber, Delivery_Date,Fulfilled_Date, WMS_Inserted_Date, Warehouse)
+SELECT s.Store,
+       s.SalesOrderNumber,
+       sf.StatusDate,
+       sf2.StatusDate,
+       sf3.statusdate,
+       CASE WHEN f.warehouse  = 'MANSCAPED-DTC' THEN 'FSD-Baja'
+       WHEN f.warehouse = 'Texas' Then 'FSD-Reynosa'
+	   WHEN f.warehouse ='Fulfillment Center TX / Texas' THEN 'FSD-Reynosa'
+	   WHEN f.warehouse = 'Manscaped-DTC / Manscaped-DTC' THEN 'FSD-Baja'
+	   WHEN f.warehouse ='Fulfillment Center TX/Texas' THEN 'FSD-Reynosa'
+	   WHEN f.warehouse = 'Manscaped-DTC/Manscaped-DTC' THEN 'FSD-Baja'
+       WHEN f.warehouse = 'ATL' THEN 'Maersk-ATL'
+       WHEN f.warehouse = 'TOR' THEN 'Maersk-TOR'
+       Else f.warehouse END As 'Warehouse'
+FROM SourceSystemDim ss
+INNER JOIN SalesOrderStatusDim sos2 ON  sos2.Status = 'Fulfilled'
+INNER JOIN SalesOrderStatusFact sf2 ON  ss.SourceSystemId = sf2.SourceSystemId AND sos2.SalesOrderStatusId = sf2.SalesOrderStatusId
+LEFT JOIN SalesOrderStatusDim sos ON sos.Status = 'Delivered'
+LEFT JOIN SalesOrderStatusFact sf ON sos.SalesOrderStatusId = sf.SalesOrderStatusId AND sf.SourceSystemId = sf2.SourceSystemId and sf.SalesOrderId = sf2.SalesOrderId
+LEFT JOIN SalesOrderStatusDim sos3 ON sos3.Status = 'Open'
+LEFT JOIN SalesOrderStatusFact sf3 ON sos3.SalesOrderStatusId = sf3.SalesOrderStatusId AND sf.SourceSystemId = sf3.SourceSystemId and sf.SalesOrderId = sf3.SalesOrderId
+INNER JOIN SalesOrderDim s ON sf2.SalesOrderId = s.SalesOrderId
+INNER JOIN fpa3pl f ON s.salesordernumber =f.ordernumber
+WHERE sf2.statusdate >='2024-05-01' AND ss.SourceSystemName IN ('Visible','Shiphero')
+
+DECLARE @tempordertype TABLE (
+    ordernumber VARCHAR (100),
+    period VARCHAR (100),
+    order_category VARCHAR (100),
+    CORE_PHP INT
+)
+
+INSERT INTO @tempordertype (ordernumber,period,order_category,CORE_PHP)
+Select 
+so.ordernumber,
+so.period,
+soh.WebSubOther,
+CASE WHEN i.IScorePHP =1 AND so.lineitem_quantity =1 THEN '1' ELSE 0 END
+FROM ItemDIM i 
+INNER JOIN ShopifyOrders so ON i.sku = so.lineitem_sku
+INNER JOIN ShopifyOrdersHeader soh ON so.ordernumber =soh.ordernumber
+Where so.store = 'MAN-US' AND soh.period >=202405
+
+SELECT soh.period,
+soh.Shipping_Province As 'State', 
+t.warehouse, 
+t.SalesOrderNumber, 
+soh.Created_at As 'Ordered_Date', 
+t.Fulfilled_Date, 
+t.Delivery_Date,
+t.WMS_Inserted_Date,
+DateDiff(day,soh.Created_at, Fulfilled_Date) AS 'Days To Fulfill',
+DateDiff (day,Fulfilled_Date,Delivery_Date) AS 'Days In Transit', 
+DateDiff(day,soh.Created_at, Delivery_Date) AS 'Days Total',
+DateDiff (hour,soh.Created_at,WMS_Inserted_Date) AS 'Hold Time', 
+DateDiff (day,soh.Created_at, WMS_Inserted_Date) AS 'Hold Day', 
+DateDiff(day,WMS_Inserted_Date, Fulfilled_Date) AS 'Days from 3PL Inserted Date to Fulfill',
+DateDiff(day,WMS_Inserted_Date, Fulfilled_Date)  - DATEDIFF (week,WMS_Inserted_Date,DateAdd(day, 1,Fulfilled_Date))- DATEDIFF(week,WMS_Inserted_Date,Fulfilled_Date) AS '3PL Inserted Date to Fulfill Without Weekend',
+Datename(weekday,WMS_Inserted_Date) As 'Weekday_WMS_Inserted_Date',
+Datename(weekday,Fulfilled_Date) As 'Weekday_Fufilled_Date',
+CASE WHEN t2.order_category = 'Web' Then 'Web' WHEN t2.CORE_PHP= '1' THEN 'CORE_PHP' ElSE 'PHP & LEGACY' END AS 'Order Type'
+from @TempTable t
+INNER JOIN ShopifyOrdersHeader soh  ON t.Store = soh.Store AND t.SalesOrderNumber = soh.OrderNumber
+INNER JOIN @tempordertype t2 ON t.SalesOrderNumber=t2.ordernumber 
+WHERE soh.store = 'MAN-US' AND soh.period >=202405
+GROUP BY 
+soh.period,
+soh.Shipping_Province, 
+t.warehouse, 
+t.SalesOrderNumber, 
+soh.Created_at, 
+t.Fulfilled_Date, 
+t.Delivery_Date, 
+t.WMS_Inserted_Date,
+DateDiff(day,soh.Created_at, Fulfilled_Date),
+DateDiff (day,Fulfilled_Date,Delivery_Date), 
+DateDiff(day,soh.Created_at, Delivery_Date),
+DateDiff (hour,soh.Created_at,WMS_Inserted_Date), 
+DateDiff (day,soh.Created_at, WMS_Inserted_Date), 
+DateDiff(day,WMS_Inserted_Date, Fulfilled_Date),
+DateDiff(day,WMS_Inserted_Date, Fulfilled_Date)  - DATEDIFF (week,WMS_Inserted_Date,DateAdd(day, 1,Fulfilled_Date))- DATEDIFF(week,WMS_Inserted_Date,Fulfilled_Date),
+Datename(weekday,WMS_Inserted_Date),
+Datename(weekday,Fulfilled_Date),
+CASE WHEN t2.order_category = 'Web' Then 'Web' WHEN t2.CORE_PHP= '1' THEN 'CORE_PHP' ElSE 'PHP & LEGACY' END
+ORDER BY soh.period
