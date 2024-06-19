@@ -1,0 +1,81 @@
+SELECT
+soh.period,
+soh.Shipping_Province As State,
+t.warehouse,
+t.SalesOrderNumber,
+soh.Created_at As Ordered_Date,
+t.Fulfilled_Date,
+t.Delivery_Date,
+DateDiff(day,soh.Created_at, Fulfilled_Date) AS Days_To_Fulfill,
+DateDiff (day,Fulfilled_Date,Delivery_Date) AS Days_In_Transit,
+DateDiff(day,soh.Created_at, Delivery_Date) AS Days_Total,
+CASE
+WHEN t2.IsPHP = '0' Then 'First-Time-Order_&_Off-Cycle'
+WHEN t2.IsPHP = '1' And t2.CORE_PHP= '1' THEN 'CORE_PHP'
+WHEN t2.IsPHP = '1' And t2.CORE_PHP= '0' THEN 'Kitting-On-The-Fly_PHP'
+ELSE 'CHECK'
+END AS order_category
+
+from (
+
+SELECT s.Store as  Store,
+       s.SalesOrderNumber as SalesOrderNumber,
+       sf.StatusDate as Delivery_Date,
+       sf2.StatusDate  as Fulfilled_Date,
+       CASE WHEN f.warehouse  = 'MANSCAPED-DTC' THEN 'FSD-Baja'
+       WHEN f.warehouse = 'Texas' Then 'FSD-Reynosa'
+     WHEN f.warehouse ='Fulfillment Center TX / Texas' THEN 'FSD-Reynosa'
+     WHEN f.warehouse = 'Manscaped-DTC / Manscaped-DTC' THEN 'FSD-Baja'
+     WHEN f.warehouse ='Fulfillment Center TX/Texas' THEN 'FSD-Reynosa'
+     WHEN f.warehouse = 'Manscaped-DTC/Manscaped-DTC' THEN 'FSD-Baja'
+     WHEN f.warehouse = 'ATL' THEN 'Maersk-ATL'
+     WHEN f.warehouse = 'TOR' THEN 'Maersk-Toronto'
+       Else f.warehouse END As Warehouse
+FROM SourceSystemDim ss
+INNER JOIN SalesOrderStatusDim sos2 ON  sos2.Status = 'Fulfilled'
+INNER JOIN SalesOrderStatusFact sf2 ON  ss.SourceSystemId = sf2.SourceSystemId AND sos2.SalesOrderStatusId = sf2.SalesOrderStatusId
+LEFT JOIN SalesOrderStatusDim sos ON sos.Status = 'Delivered'
+LEFT JOIN SalesOrderStatusFact sf ON sos.SalesOrderStatusId = sf.SalesOrderStatusId AND sf.SourceSystemId = sf2.SourceSystemId and sf.SalesOrderId = sf2.SalesOrderId
+INNER JOIN SalesOrderDim s ON sf2.SalesOrderId = s.SalesOrderId
+INNER JOIN fpa3pl f ON s.salesordernumber =f.ordernumber
+WHERE ss.SourceSystemName IN ('Visible','Shiphero') and sf2.statusdate >='2023-05-01'
+) t
+
+INNER JOIN ShopifyOrdersHeader soh
+ON t.Store = soh.Store
+AND t.SalesOrderNumber = soh.OrderNumber
+
+INNER JOIN (
+Select
+so.ordernumber as ordernumber,
+so.period as period,
+CASE WHEN so.tags LIKE '%Subscription Recurring Order%' Then '1' Else '0' END AS 'IsPHP',
+CASE WHEN i.IScorePHP =1 AND so.lineitem_quantity =1 THEN '1' ELSE 0 END as CORE_PHP
+FROM ItemDIM i
+INNER JOIN ShopifyOrders so ON i.sku = so.lineitem_sku
+INNER JOIN ShopifyOrdersHeader soh ON so.ordernumber =soh.ordernumber
+Where so.store = 'MAN-US' AND soh.period >=202405
+) t2
+ON t.SalesOrderNumber=t2.ordernumber
+
+WHERE
+soh.store = 'MAN-US'
+AND soh.period >=202405
+
+GROUP BY
+soh.period,
+soh.Shipping_Province,
+t.warehouse,
+t.SalesOrderNumber,
+soh.Created_at,
+t.Fulfilled_Date,
+t.Delivery_Date,
+DateDiff(day,soh.Created_at, Fulfilled_Date),
+DateDiff (day,Fulfilled_Date,Delivery_Date),
+DateDiff(day,soh.Created_at, Delivery_Date),
+CASE
+WHEN t2.IsPHP = '0' Then 'First-Time-Order_&_Off-Cycle'
+WHEN t2.IsPHP = '1' And t2.CORE_PHP= '1' THEN 'CORE_PHP'
+WHEN t2.IsPHP = '1' And t2.CORE_PHP= '0' THEN 'Kitting-On-The-Fly_PHP'
+ELSE 'CHECK'
+END 
