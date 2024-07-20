@@ -1,0 +1,88 @@
+WITH  C2D AS (
+SELECT s.Store,
+s.SalesOrderNumber ,
+sf.StatusDate as Delivery_Date,
+sf2.StatusDate as Fulfilled_Date,
+sf3.statusDate as WMS_Imported_Date,
+l.source3PL,
+CASE
+WHEN l.source3PL ='NPF' THEN 'NPF'
+            WHEN l.Source3PL= 'Visible' And l.Locations ='ATL' Then 'Maersk-ATL'
+            WHEN l.Source3PL= 'Visible' And l.Locations ='TOR' Then 'Maersk-TOR'
+            WHEN l.Source3PL= 'Shiphero' And l.Locations ='Texas' Then 'FSD-Reynosa'
+            WHEN l.Source3PL= 'Shiphero' And l.Locations LIKE 'Manscaped-DTC%' Then 'FSD-Baja'
+            WHEN l.Source3PL= 'Shiphero' And l.Locations ='default' Then 'FSD-Baja/FSD-Reynosa'
+            WHEN l.Source3PL= 'SEKO' And l.Locations ='DCCL01' Then 'SEKO-UK'
+            WHEN l.Source3PL= 'SEKO' And l.Locations ='DCRTDM02' Then 'SEKO-NL'
+            WHEN l.Source3PL= 'ShipStation' And l.Locations ='Trade Place' Then 'Trade Place'
+            WHEN l.Source3PL= 'TFI' Then 'TFI'
+ Else coalesce (l.Source3PL,l.locations)
+        END AS Warehouse
+FROM SourceSystemDim ss
+INNER JOIN SalesOrderStatusDim sos2 ON sos2.Status = 'Fulfilled'
+INNER JOIN SalesOrderStatusFact sf2 ON ss.SourceSystemId = sf2.SourceSystemId AND sos2.SalesOrderStatusId = sf2.SalesOrderStatusId
+LEFT JOIN SalesOrderStatusDim sos ON sos.Status = 'Delivered'
+LEFT JOIN SalesOrderStatusFact sf ON sos.SalesOrderStatusId = sf.SalesOrderStatusId AND sf.SourceSystemId = sf2.SourceSystemId and sf.SalesOrderId = sf2.SalesOrderId
+LEFT JOIN SalesOrderStatusDim sos3 ON sos3.Status = 'Open'
+LEFT JOIN SalesOrderStatusFact sf3 ON sos3.SalesOrderStatusId = sf3.SalesOrderStatusId AND sf2.SourceSystemId = sf3.SourceSystemId and sf2.SalesOrderId = sf3.SalesOrderId
+INNER JOIN SalesOrderDim s ON sf2.SalesOrderId = s.SalesOrderId
+INNER JOIN LocationGroupDim l ON sf.locationgroupid = l.locationgroupid
+WHERE sf2.statusdate >='2023-05-01'),
+
+
+CUTOFFTABLE AS (
+SELECT
+t.SalesOrderNumber,
+CASE 
+WHEN t.source3PL ='Shiphero' And CAST(t.WMS_Imported_Date AS TIME) >= '10:00:00' THEN 1
+WHEN t.source3PL ='Visible' And CAST(t.WMS_Imported_Date AS TIME) >= '12:00:00' THEN 1
+WHEN t.source3PL ='NP' And CAST(t.WMS_Imported_Date AS TIME) >= '05:20:00' THEN 1
+WHEN t.source3PL ='TFI' And CAST(t.WMS_Imported_Date AS TIME) >= '12:00:00' THEN 1
+ Else '0' END AS After_Cut_Off_Time,
+ CASE WHEN (DateDiff(day,WMS_Imported_Date, Fulfilled_Date) - DATEDIFF (week,WMS_Imported_Date,DateAdd(day, 1,Fulfilled_Date))- DATEDIFF(week,WMS_Imported_Date,Fulfilled_Date)) <0 Then '0' ElSE DateDiff(day,WMS_Imported_Date, Fulfilled_Date) - DATEDIFF (week,WMS_Imported_Date,DateAdd(day, 1,Fulfilled_Date))- DATEDIFF(week,WMS_Imported_Date,Fulfilled_Date) END AS Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend
+ FROM C2D t
+) 
+
+SELECT
+soh.period,
+soh.Shipping_Province As State,
+t.warehouse,
+t.SalesOrderNumber,
+soh.Created_at As Ordered_Date,
+t.Fulfilled_Date,
+t.Delivery_Date,
+t.WMS_Imported_Date,
+t3.After_Cut_Off_Time,
+DateDiff (hour,soh.Created_at,WMS_Imported_Date) AS Hold_Time,
+DateDiff(day,soh.Created_at, Delivery_Date) AS Days_From_Click_To_Delivery,
+DateDiff(day,soh.Created_at, Fulfilled_Date) AS Days_From_Click_To_FulFill,
+DateDiff(day,Fulfilled_Date, Delivery_Date) AS Days_In_Transit,
+DateDiff(day,WMS_Imported_Date, Fulfilled_Date) AS Days_From_3PL_Imported_Date_to_Fulfill,
+Datename(weekday,WMS_Imported_Date) As Weekday_WMS_Imported_Date,
+Datename(weekday,Fulfilled_Date) As Weekday_Fufilled_Date,
+t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend,
+CASE WHEN t3.After_Cut_Off_Time = 1 THEN (t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend -1) ELSE Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend END AS Ajusted_Days_From_3PL_Imported_Date_To_Fulfill
+FROM ShopifyOrdersHeader soh
+INNER JOIN C2D t On soh.OrderNumber = t.SalesOrderNumber
+INNER JOIN CUTOFFTABLE t3 ON t.SalesOrderNumber = t3.SalesOrderNumber 
+Where soh.period=202406
+
+Group By 
+soh.period,
+soh.Shipping_Province,
+t.warehouse,
+t.SalesOrderNumber,
+soh.Created_at,
+t.Fulfilled_Date,
+t.Delivery_Date,
+t.WMS_Imported_Date,
+t3.After_Cut_Off_Time,
+DateDiff (hour,soh.Created_at,WMS_Imported_Date),
+DateDiff(day,soh.Created_at, Delivery_Date) ,
+DateDiff(day,soh.Created_at, Fulfilled_Date) ,
+DateDiff(day,Fulfilled_Date, Delivery_Date),
+DateDiff(day,WMS_Imported_Date, Fulfilled_Date),
+Datename(weekday,WMS_Imported_Date),
+Datename(weekday,Fulfilled_Date),
+t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend,
+CASE WHEN t3.After_Cut_Off_Time = 1 THEN (t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend -1) ELSE Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend END
