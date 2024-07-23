@@ -33,12 +33,14 @@ WHERE sf2.statusdate >='2023-05-01'),
 CUTOFFTABLE AS (
 SELECT
 t.SalesOrderNumber,
+Datename(weekday,WMS_Imported_Date) As Weekday_WMS_Imported_Date,
+Datename(weekday,Fulfilled_Date) As Weekday_Fufilled_Date,
 CASE 
 WHEN t.source3PL ='Shiphero' And CAST(t.WMS_Imported_Date AS TIME) >= '10:00:00' THEN 1
 WHEN t.source3PL ='Visible' And CAST(t.WMS_Imported_Date AS TIME) >= '12:00:00' THEN 1
 WHEN t.source3PL ='NP' And CAST(t.WMS_Imported_Date AS TIME) >= '05:20:00' THEN 1
 WHEN t.source3PL ='TFI' And CAST(t.WMS_Imported_Date AS TIME) >= '12:00:00' THEN 1
- Else '0' END AS After_Cut_Off_Time,
+ Else 0 END AS After_Cut_Off_Time,
  CASE WHEN (DateDiff(day,WMS_Imported_Date, Fulfilled_Date) - DATEDIFF (week,WMS_Imported_Date,DateAdd(day, 1,Fulfilled_Date))- DATEDIFF(week,WMS_Imported_Date,Fulfilled_Date)) <0 Then '0' ElSE DateDiff(day,WMS_Imported_Date, Fulfilled_Date) - DATEDIFF (week,WMS_Imported_Date,DateAdd(day, 1,Fulfilled_Date))- DATEDIFF(week,WMS_Imported_Date,Fulfilled_Date) END AS Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend
  FROM C2D t
 ) 
@@ -49,19 +51,29 @@ soh.Shipping_Province As State,
 t.warehouse,
 t.SalesOrderNumber,
 soh.Created_at As Ordered_Date,
-t.Fulfilled_Date,
 t.Delivery_Date,
 t.WMS_Imported_Date,
 t3.After_Cut_Off_Time,
+CASE WHEN t3.After_Cut_Off_Time =1 Then 'YES' Else 'NO' END AS After_Cut_Off_Time_YES_NO,
+t3.Weekday_WMS_Imported_Date,
+t.Fulfilled_Date,
+t3.Weekday_Fufilled_Date,
 DateDiff (hour,soh.Created_at,WMS_Imported_Date) AS Hold_Time,
 DateDiff(day,soh.Created_at, Delivery_Date) AS Days_From_Click_To_Delivery,
 DateDiff(day,soh.Created_at, Fulfilled_Date) AS Days_From_Click_To_FulFill,
 DateDiff(day,Fulfilled_Date, Delivery_Date) AS Days_In_Transit,
 DateDiff(day,WMS_Imported_Date, Fulfilled_Date) AS Days_From_3PL_Imported_Date_to_Fulfill,
-Datename(weekday,WMS_Imported_Date) As Weekday_WMS_Imported_Date,
-Datename(weekday,Fulfilled_Date) As Weekday_Fufilled_Date,
 t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend,
-CASE WHEN t3.After_Cut_Off_Time = 1 THEN (t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend -1) ELSE Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend END AS Ajusted_Days_From_3PL_Imported_Date_To_Fulfill
+CASE 
+WHEN t3.After_Cut_Off_Time = 0 Then t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Monday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Tuesday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Wednesday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Thursday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Friday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Saturday' Then greatest(t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend,0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Sunday' Then greatest(t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend,0)
+ELSE t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend END AS Ajusted_Days_From_3PL_Imported_Date_To_Fulfill
 FROM ShopifyOrdersHeader soh
 INNER JOIN C2D t On soh.OrderNumber = t.SalesOrderNumber
 INNER JOIN CUTOFFTABLE t3 ON t.SalesOrderNumber = t3.SalesOrderNumber 
@@ -73,16 +85,25 @@ soh.Shipping_Province,
 t.warehouse,
 t.SalesOrderNumber,
 soh.Created_at,
-t.Fulfilled_Date,
 t.Delivery_Date,
 t.WMS_Imported_Date,
 t3.After_Cut_Off_Time,
+CASE WHEN t3.After_Cut_Off_Time =1 Then 'YES' Else 'NO' END,
+t3.Weekday_WMS_Imported_Date,
+t.Fulfilled_Date,
+t3.Weekday_Fufilled_Date,
 DateDiff (hour,soh.Created_at,WMS_Imported_Date),
-DateDiff(day,soh.Created_at, Delivery_Date) ,
-DateDiff(day,soh.Created_at, Fulfilled_Date) ,
+DateDiff(day,soh.Created_at, Delivery_Date),
+DateDiff(day,soh.Created_at, Fulfilled_Date),
 DateDiff(day,Fulfilled_Date, Delivery_Date),
 DateDiff(day,WMS_Imported_Date, Fulfilled_Date),
-Datename(weekday,WMS_Imported_Date),
-Datename(weekday,Fulfilled_Date),
 t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend,
-CASE WHEN t3.After_Cut_Off_Time = 1 THEN (t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend -1) ELSE Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend END
+CASE WHEN t3.After_Cut_Off_Time = 0 Then t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Monday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Tuesday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Wednesday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Thursday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Friday' Then greatest((t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend-1),0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Saturday' Then greatest(t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend,0)
+WHEN t3.After_Cut_Off_Time = 1 AND t3.Weekday_WMS_Imported_Date ='Sunday' Then greatest(t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend,0)
+ELSE t3.Days_From_3PL_Imported_Date_To_Fulfill_Without_Weekend END
