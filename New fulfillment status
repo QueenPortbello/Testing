@@ -1,0 +1,34 @@
+select
+shop_ord.ORDER_CODE AS "ORDER_NUMBER",
+shop_ord.CREATED_AT,
+CASE WHEN shop_ord.Fulfillment_Status IS NULL THEN 'Unfulfilled' ELSE shop_ord.Fulfillment_Status END AS "Fulfillment_Status",
+shop_ord.TAGS,
+shop_ord.SHIPPING_STATE,
+shop_ord.SHIPPING_COUNTRY,
+shop_ord.FINANCIAL_STATUS,
+CASE WHEN shop_ord.TAGS LIKE '%FSD_REYNOSA%' THEN 'FSD_REYNOSA'
+WHEN shop_ord.TAGS LIKE '%FSD_TECATE%' THEN 'FSD_TECATE'
+WHEN shop_ord.TAGS LIKE '%MAERSK_TORONTO%' THEN 'MAERSK_TORONTO'
+WHEN shop_ord.TAGS LIKE '%MAERSK_ATLANTA%' THEN 'MAERSK_ATLANTA'
+WHEN shop_ord.TAGS LIKE '%NPF%' THEN 'NPF'
+WHEN shop_ord.TAGS LIKE '%Trade%' THEN 'Trade_Place'
+WHEN shop_ord.TAGS LIKE '%TFI%' THEN 'TFI'
+WHEN shop_ord.TAGS LIKE '%Seko%' AND shop_ord.TAGS LIKE '%UK%'THEN 'SEKO-UK'
+WHEN shop_ord.TAGS LIKE '%Seko%' AND shop_ord.TAGS LIKE '%EU%'THEN 'SEKO-NL'
+ELSE 'OTHERS'END AS Warehouse
+from shopify.orders shop_ord
+inner join(
+select
+order_id,
+order_code,
+count(*) over (partition by order_code) as num_order_id,
+rank() over (partition by order_code order by order_id)
+from shopify.orders
+group by
+order_id,
+order_code
+qualify rank() over (partition by order_code order by order_id) = 1
+) de_dupe
+on de_dupe.order_id = shop_ord.order_id
+WHERE shop_ord.CREATED_AT >= '2024-10-21' AND shop_ord.CANCELLED_AT IS NULL
+ORDER BY shop_ord.CREATED_AT ASC
